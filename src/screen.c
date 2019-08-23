@@ -27,6 +27,7 @@ typedef struct
   unsigned int protected_cell : 1;
   unsigned int dwl            : 1; /* on a DECDWL or DECDHL line */
   unsigned int dhl            : 2; /* on a DECDHL line (1=top 2=bottom) */
+  unsigned int newline        : 1; /* on a new line after a linefeed character (not wraparound) */
 } ScreenPen;
 
 /* Internal representation of a screen cell */
@@ -198,6 +199,7 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   cell->pen.protected_cell = info->protected_cell;
   cell->pen.dwl            = info->dwl;
   cell->pen.dhl            = info->dhl;
+  cell->pen.newline        = info->newline;
 
   damagerect(screen, rect);
 

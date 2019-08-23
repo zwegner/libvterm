@@ -19,6 +19,7 @@ static void putglyph(VTermState *state, const uint32_t chars[], int width, VTerm
     .protected_cell = state->protected_cell,
     .dwl = state->lineinfo[pos.row].doublewidth,
     .dhl = state->lineinfo[pos.row].doubleheight,
+    .newline = state->on_newline,
   };
 
   if(state->callbacks && state->callbacks->putglyph)
@@ -121,8 +122,9 @@ static void scroll(VTermState *state, VTermRect rect, int downward, int rightwar
         state->callbacks->moverect, state->callbacks->erase, state->cbdata);
 }
 
-static void linefeed(VTermState *state)
+static void linefeed(VTermState *state, int is_wraparound)
 {
+  state->on_newline = !is_wraparound;
   if(state->pos.row == SCROLLREGION_BOTTOM(state) - 1) {
     VTermRect rect = {
       .start_row = state->scrollregion_top,
@@ -303,6 +305,9 @@ static int on_text(const char bytes[], size_t len, void *user)
 
       /* Now render it */
       putglyph(state, state->combine_chars, state->combine_width, state->combine_pos);
+
+      /* XXX */
+      state->on_newline = 0;
     }
     else {
       DEBUG_LOG("libvterm: TODO: Skip over split char+combining\n");
@@ -345,7 +350,7 @@ static int on_text(const char bytes[], size_t len, void *user)
 #endif
 
     if(state->at_phantom || state->pos.col + width > THISROWWIDTH(state)) {
-      linefeed(state);
+      linefeed(state, 1);
       state->pos.col = 0;
       state->at_phantom = 0;
     }
@@ -365,6 +370,9 @@ static int on_text(const char bytes[], size_t len, void *user)
     }
 
     putglyph(state, chars, width, state->pos);
+
+    /* XXX */
+    state->on_newline = 0;
 
     if(i == npoints - 1) {
       /* End of the buffer. Save the chars in case we have to combine with
@@ -429,7 +437,7 @@ static int on_control(unsigned char control, void *user)
   case 0x0a: // LF - ECMA-48 8.3.74
   case 0x0b: // VT
   case 0x0c: // FF
-    linefeed(state);
+    linefeed(state, 0);
     if(state->mode.newline)
       state->pos.col = 0;
     break;
@@ -447,11 +455,11 @@ static int on_control(unsigned char control, void *user)
     break;
 
   case 0x84: // IND - DEPRECATED but implemented for completeness
-    linefeed(state);
+    linefeed(state, 0);
     break;
 
   case 0x85: // NEL - ECMA-48 8.3.86
-    linefeed(state);
+    linefeed(state, 0);
     state->pos.col = 0;
     break;
 

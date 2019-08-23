@@ -67,6 +67,8 @@ struct VTermState
   /* Current cursor position */
   VTermPos pos;
 
+  int on_newline; /* True if we're on the first column after an explicit linefeed (not wraparound) */
+
   int at_phantom; /* True if we're on the "81st" phantom column to defer a wraparound */
 
   int scrollregion_top;

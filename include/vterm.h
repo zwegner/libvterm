@@ -122,6 +122,7 @@ typedef struct {
   unsigned int    protected_cell:1;  /* DECSCA-protected against DECSEL/DECSED */
   unsigned int    dwl:1;             /* DECDWL or DECDHL double-width line */
   unsigned int    dhl:2;             /* DECDHL double-height line (1=top 2=bottom) */
+  unsigned int    newline:1;         /* on a new line after a linefeed character (not wraparound) */
 } VTermGlyphInfo;
 
 typedef struct {
@@ -255,6 +256,7 @@ typedef struct {
     unsigned int font      : 4; /* 0 to 9 */
     unsigned int dwl       : 1; /* On a DECDWL or DECDHL line */
     unsigned int dhl       : 2; /* On a DECDHL line (1=top 2=bottom) */
+    unsigned int newline   : 1; /* On a new line (not after wraparound) */
 } VTermScreenCellAttrs;
 
 typedef struct {
