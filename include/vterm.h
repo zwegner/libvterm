@@ -122,7 +122,6 @@ typedef struct {
   unsigned int    protected_cell:1;  /* DECSCA-protected against DECSEL/DECSED */
   unsigned int    dwl:1;             /* DECDWL or DECDHL double-width line */
   unsigned int    dhl:2;             /* DECDHL double-height line (1=top 2=bottom) */
-  unsigned int    newline:1;         /* on a new line after a linefeed character (not wraparound) */
 } VTermGlyphInfo;
 
 typedef struct {
@@ -218,6 +217,7 @@ typedef struct {
   int (*bell)(void *user);
   int (*resize)(int rows, int cols, VTermPos *delta, void *user);
   int (*setlineinfo)(int row, const VTermLineInfo *newinfo, const VTermLineInfo *oldinfo, void *user);
+  int (*marknewline)(VTermPos pos, void *user);
 } VTermStateCallbacks;
 
 VTermState *vterm_obtain_state(VTerm *vt);

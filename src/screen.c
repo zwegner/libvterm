@@ -178,6 +178,10 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   if(!cell)
     return 0;
 
+  /* Save the old newline bit of the cell, we don't want to overwrite it after
+   * e.g. a BS or CR. The bit will be cleared when allocating new cells/lines in the terminal. */
+  int save_newline = cell->pen.newline;
+
   int i;
   for(i = 0; i < VTERM_MAX_CHARS_PER_CELL && info->chars[i]; i++) {
     cell->chars[i] = info->chars[i];
@@ -199,7 +203,8 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   cell->pen.protected_cell = info->protected_cell;
   cell->pen.dwl            = info->dwl;
   cell->pen.dhl            = info->dhl;
-  cell->pen.newline        = info->newline;
+  /* Restore old newline bit */
+  cell->pen.newline        = save_newline;
 
   damagerect(screen, rect);
 
@@ -578,6 +583,15 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   return 1;
 }
 
+static int marknewline(VTermPos pos, void *user)
+{
+  VTermScreen *screen = user;
+  ScreenCell *cell = getcell(screen, pos.row, 0);
+
+  cell->pen.newline = 1;
+  return 1;
+}
+
 static int setlineinfo(int row, const VTermLineInfo *newinfo, const VTermLineInfo *oldinfo, void *user)
 {
   VTermScreen *screen = user;
@@ -619,6 +633,7 @@ static VTermStateCallbacks state_cbs = {
   .bell        = &bell,
   .resize      = &resize,
   .setlineinfo = &setlineinfo,
+  .marknewline = &marknewline,
 };
 
 static VTermScreen *screen_new(VTerm *vt)
@@ -758,6 +773,8 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
 
   cell->attrs.dwl = intcell->pen.dwl;
   cell->attrs.dhl = intcell->pen.dhl;
+
+  cell->attrs.newline = intcell->pen.newline;
 
   cell->fg = intcell->pen.fg;
   cell->bg = intcell->pen.bg;
