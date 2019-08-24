@@ -933,9 +933,6 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
   VTermRect rect;
   int selective;
 
-#define LBOUND(v,min) if((v) < (min)) (v) = (min)
-#define UBOUND(v,max) if((v) > (max)) (v) = (max)
-
 #define LEADER(l,b) ((l << 8) | b)
 #define INTERMED(i,b) ((i << 16) | b)
 

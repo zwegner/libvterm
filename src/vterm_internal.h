@@ -24,6 +24,9 @@
 #define CSI_ARGS_MAX 16
 #define CSI_LEADER_MAX 16
 
+#define LBOUND(v,min) if((v) < (min)) (v) = (min)
+#define UBOUND(v,max) if((v) > (max)) (v) = (max)
+
 typedef struct VTermEncoding VTermEncoding;
 
 typedef struct {
