@@ -78,19 +78,62 @@ static inline ScreenCell *getcell(const VTermScreen *screen, int row, int col)
   return screen->buffer + (screen->cols * row) + col;
 }
 
+static int get_last_filled_col(const VTermScreen *screen, const ScreenCell *buffer, int row, int col)
+{
+  int last_filled_col = -1;
+  for(int c = col; c < screen->cols; c++) {
+    if(buffer[row * screen->cols + c].chars[0])
+      last_filled_col = c;
+  }
+  return last_filled_col;
+}
+
 static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int new_rows, int new_cols)
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
 
+  /* XXX For now, ignore whether first row is wraparound from a scrollback row. Also, this
+   * function should really be copying rows from the bottom up rather than top down. */
+  int old_row = 0, old_col = 0;
   for(int row = 0; row < new_rows; row++) {
     for(int col = 0; col < new_cols; col++) {
       ScreenCell *new_cell = new_buffer + row*new_cols + col;
 
-      if(buffer && row < screen->rows && col < screen->cols)
-        *new_cell = buffer[row * screen->cols + col];
+      /* Copy old cell over */
+      if(buffer && old_row < screen->rows && old_col < screen->cols)
+        *new_cell = buffer[old_row * screen->cols + old_col];
       else {
         new_cell->chars[0] = 0;
         new_cell->pen = screen->pen;
+      }
+
+      /* Advance old cell copy position, and check for wraparound of the old buffer */
+      old_col++;
+      if(buffer && old_col == screen->cols) {
+        old_col = 0;
+        old_row++;
+        if(old_row < screen->rows) {
+          /* Check if the next row was wraparound or a new line. If it's a new
+           * line, we're done copying here, fill the rest of the row with blanks. */
+          if(buffer[old_row * screen->cols + old_col].pen.newline) {
+            for(col++, new_cell++; col < new_cols; col++, new_cell++) {
+              new_cell->chars[0] = 0;
+              new_cell->pen = screen->pen;
+            }
+            break;
+          }
+        }
+      }
+    }
+
+    /* Check if the current line we're copying from the old buffer has more characters in it.
+     * XXX should we check for the newline bit on the next line? I think we don't need to, since
+     * if this line wrapped around it would have actual characters at the end rather than blanks. */
+    if(buffer && old_row < screen->rows) {
+      int last_filled_col = get_last_filled_col(screen, buffer, old_row, old_col);
+      if(last_filled_col == -1) {
+        old_col = 0;
+        old_row++;
       }
     }
   }
@@ -821,14 +864,9 @@ static int vterm_screen_set_cell(VTermScreen *screen, VTermPos pos, const VTermS
 
 int vterm_screen_is_eol(const VTermScreen *screen, VTermPos pos)
 {
-  /* This cell is EOL if this and every cell to the right is black */
-  for(; pos.col < screen->cols; pos.col++) {
-    ScreenCell *cell = getcell(screen, pos.row, pos.col);
-    if(cell->chars[0] != 0)
-      return 0;
-  }
+  int last_filled_col = get_last_filled_col(screen, screen->buffer, pos.row, pos.col);
 
-  return 1;
+  return (last_filled_col == -1);
 }
 
 VTermScreen *vterm_obtain_screen(VTerm *vt)
