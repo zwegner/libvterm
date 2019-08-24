@@ -326,9 +326,11 @@ static int erase_internal(VTermRect rect, int selective, void *user)
         continue;
 
       cell->chars[0] = 0;
+      int save_newline = cell->pen.newline;
       cell->pen = screen->pen;
       cell->pen.dwl = info->doublewidth;
       cell->pen.dhl = info->doubleheight;
+      cell->pen.newline = save_newline;
     }
   }
 
