@@ -92,50 +92,65 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
 
-  /* XXX For now, ignore whether first row is wraparound from a scrollback row. Also, this
-   * function should really be copying rows from the bottom up rather than top down. */
-  int old_row = 0, old_col = 0;
-  for(int row = 0; row < new_rows; row++) {
-    for(int col = 0; col < new_cols; col++) {
-      ScreenCell *new_cell = new_buffer + row*new_cols + col;
+  /* Start copying from the bottom row of each buffer, one line at a time. */
+  int src_row_end = -1;
+  if(buffer)
+    src_row_end = screen->rows - 1;
+  for(int dest_row_end = new_rows - 1; dest_row_end >= 0; ) {
+    /* Determine how many rows in the source and destination buffers this line occupies */
+    int src_row_start = src_row_end;
+    int dest_row_start = dest_row_end;
+    if(buffer && src_row_end >= 0) {
+      /* Go back through rows in the source buffer until we find one with a newline marker */
+      for(; src_row_start >= 0; src_row_start--)
+        if(buffer[src_row_start * screen->cols + 0].pen.newline)
+          break;
+      /* XXX if the first line of the old buffer is wraparound, just ignore that and treat it like
+       * a newline for now */
+      if(src_row_start == -1)
+        src_row_start = 0;
 
-      /* Copy old cell over */
-      if(buffer && old_row < screen->rows && old_col < screen->cols)
-        *new_cell = buffer[old_row * screen->cols + old_col];
-      else {
-        new_cell->chars[0] = 0;
-        new_cell->pen = screen->pen;
-      }
+      /* See how many characters are in the last row so we know how many rows in the new
+       * geometry to use for this line */
+      /* XXX look for wide characters at the last column of the old screen, different wrap
+       * points can make this calculation wrong in edge cases */
+      int last_filled_col = get_last_filled_col(screen, buffer, src_row_end, 0);
+      /* Always add one, since last_filled_col is one less than the number of columns used */
+      int total_cols = (src_row_end - src_row_start) * screen->cols + last_filled_col + 1;
 
-      /* Advance old cell copy position, and check for wraparound of the old buffer */
-      old_col++;
-      if(buffer && old_col == screen->cols) {
-        old_col = 0;
-        old_row++;
-        if(old_row < screen->rows) {
-          /* Check if the next row was wraparound or a new line. If it's a new
-           * line, we're done copying here, fill the rest of the row with blanks. */
-          if(buffer[old_row * screen->cols + old_col].pen.newline) {
-            for(col++, new_cell++; col < new_cols; col++, new_cell++) {
-              new_cell->chars[0] = 0;
-              new_cell->pen = screen->pen;
-            }
-            break;
+      int total_rows = (total_cols + new_cols - 1) / new_cols;
+      LBOUND(total_rows, 1);
+      dest_row_start = dest_row_end - total_rows + 1;
+      LBOUND(dest_row_start, 0);
+    }
+
+    /* Copy the line from source to destination. */
+    int src_row = src_row_start, src_col = 0;
+    for(int dest_row = dest_row_start; dest_row <= dest_row_end; dest_row++) {
+      for(int dest_col = 0; dest_col < new_cols; dest_col++) {
+        ScreenCell *new_cell = &new_buffer[dest_row*new_cols + dest_col];
+
+        /* Copy old cell over */
+        if(buffer && src_row >= 0 && src_row <= src_row_end && src_col < screen->cols) {
+          *new_cell = buffer[src_row * screen->cols + src_col];
+
+          /* Advance the source position */
+          src_col++;
+          if(src_col == screen->cols) {
+            src_col = 0;
+            src_row++;
           }
+        }
+        else {
+          new_cell->chars[0] = 0;
+          new_cell->pen = screen->pen;
         }
       }
     }
 
-    /* Check if the current line we're copying from the old buffer has more characters in it.
-     * XXX should we check for the newline bit on the next line? I think we don't need to, since
-     * if this line wrapped around it would have actual characters at the end rather than blanks. */
-    if(buffer && old_row < screen->rows) {
-      int last_filled_col = get_last_filled_col(screen, buffer, old_row, old_col);
-      if(last_filled_col == -1) {
-        old_col = 0;
-        old_row++;
-      }
-    }
+    /* Move our src/dest rows up to the rows before what we just copied */
+    dest_row_end = dest_row_start - 1;
+    src_row_end = src_row_start - 1;
   }
 
   if(buffer)
