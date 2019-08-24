@@ -312,7 +312,11 @@ static int moverect_user(VTermRect dest, VTermRect src, void *user)
   return 1;
 }
 
-static int erase_internal(VTermRect rect, int selective, void *user)
+/* Completely erase a rectangle of screen space. <selective> is for whether we should erase
+ * chars with the "protected" bit set. <full_erase> is whether we should clear metadata
+ * from characters (right now, just the newline bit), like when we're scrolling or resetting the
+ * terminal, or instead keep them, as we do in the case of the "erase" control codes. */
+static int erase_internal(VTermRect rect, int selective, int full_erase, void *user)
 {
   VTermScreen *screen = user;
 
@@ -330,14 +334,15 @@ static int erase_internal(VTermRect rect, int selective, void *user)
       cell->pen = screen->pen;
       cell->pen.dwl = info->doublewidth;
       cell->pen.dhl = info->doubleheight;
-      cell->pen.newline = save_newline;
+      if(!full_erase)
+        cell->pen.newline = save_newline;
     }
   }
 
   return 1;
 }
 
-static int erase_user(VTermRect rect, int selective, void *user)
+static int erase_user(VTermRect rect, int selective, int full_erase, void *user)
 {
   VTermScreen *screen = user;
 
@@ -346,10 +351,10 @@ static int erase_user(VTermRect rect, int selective, void *user)
   return 1;
 }
 
-static int erase(VTermRect rect, int selective, void *user)
+static int erase(VTermRect rect, int selective, int full_erase, void *user)
 {
-  erase_internal(rect, selective, user);
-  return erase_user(rect, 0, user);
+  erase_internal(rect, selective, full_erase, user);
+  return erase_user(rect, 0, full_erase, user);
 }
 
 static int scrollrect(VTermRect rect, int downward, int rightward, void *user)
@@ -661,7 +666,7 @@ static int setlineinfo(int row, const VTermLineInfo *newinfo, const VTermLineInf
       rect.start_col = screen->cols / 2;
       rect.end_col   = screen->cols;
 
-      erase_internal(rect, 0, user);
+      erase_internal(rect, 0, 1, user);
     }
   }
 
