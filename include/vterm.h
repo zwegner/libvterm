@@ -217,7 +217,7 @@ typedef struct {
   int (*bell)(void *user);
   int (*resize)(int rows, int cols, VTermPos *delta, void *user);
   int (*setlineinfo)(int row, const VTermLineInfo *newinfo, const VTermLineInfo *oldinfo, void *user);
-  int (*marknewline)(VTermPos pos, void *user);
+  int (*markwraparound)(VTermPos pos, void *user);
 } VTermStateCallbacks;
 
 VTermState *vterm_obtain_state(VTerm *vt);
@@ -247,16 +247,16 @@ const VTermLineInfo *vterm_state_get_lineinfo(const VTermState *state, int row);
 // ------------
 
 typedef struct {
-    unsigned int bold      : 1;
-    unsigned int underline : 2;
-    unsigned int italic    : 1;
-    unsigned int blink     : 1;
-    unsigned int reverse   : 1;
-    unsigned int strike    : 1;
-    unsigned int font      : 4; /* 0 to 9 */
-    unsigned int dwl       : 1; /* On a DECDWL or DECDHL line */
-    unsigned int dhl       : 2; /* On a DECDHL line (1=top 2=bottom) */
-    unsigned int newline   : 1; /* On a new line (not after wraparound) */
+    unsigned int bold       : 1;
+    unsigned int underline  : 2;
+    unsigned int italic     : 1;
+    unsigned int blink      : 1;
+    unsigned int reverse    : 1;
+    unsigned int strike     : 1;
+    unsigned int font       : 4; /* 0 to 9 */
+    unsigned int dwl        : 1; /* On a DECDWL or DECDHL line */
+    unsigned int dhl        : 2; /* On a DECDHL line (1=top 2=bottom) */
+    unsigned int wraparound : 1; /* This row is a continuation of the last line */
 } VTermScreenCellAttrs;
 
 typedef struct {

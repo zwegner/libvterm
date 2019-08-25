@@ -27,7 +27,7 @@ typedef struct
   unsigned int protected_cell : 1;
   unsigned int dwl            : 1; /* on a DECDWL or DECDHL line */
   unsigned int dhl            : 2; /* on a DECDHL line (1=top 2=bottom) */
-  unsigned int newline        : 1; /* on a new line after a linefeed character (not wraparound) */
+  unsigned int wraparound     : 1; /* This row is a continuation of the last line */
 } ScreenPen;
 
 /* Internal representation of a screen cell */
@@ -101,12 +101,12 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
     int src_row_start = src_row_end;
     int dest_row_start = dest_row_end;
     if(buffer && src_row_end >= 0) {
-      /* Go back through rows in the source buffer until we find one with a newline marker */
+      /* Go back through rows in the source buffer until we find one that's not a wraparound */
       for(; src_row_start >= 0; src_row_start--)
-        if(buffer[src_row_start * screen->cols + 0].pen.newline)
+        if(!buffer[src_row_start * screen->cols + 0].pen.wraparound)
           break;
-      /* XXX if the first line of the old buffer is wraparound, just ignore that and treat it like
-       * a newline for now */
+      /* XXX if the first line of the old buffer is a wraparound line, just ignore that and
+       * treat it like a newline for now */
       if(src_row_start == -1)
         src_row_start = 0;
 
@@ -134,6 +134,11 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
         if(buffer && src_row >= 0 && src_row <= src_row_end && src_col < screen->cols) {
           *new_cell = buffer[src_row * screen->cols + src_col];
 
+          /* Make sure to clear the wraparound bit from the source buffer, the bit only
+           * made sense in the context of the old screen width. We set the bit for the
+           * new screen width below. */
+          if (src_col == 0)
+            new_cell->pen.wraparound = 0;
           /* Advance the source position */
           src_col++;
           if(src_col == screen->cols) {
@@ -145,6 +150,10 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
           new_cell->chars[0] = 0;
           new_cell->pen = screen->pen;
         }
+
+        /* Set the wraparound bit if needed for this new size */
+        if (dest_col == 0 && dest_row > dest_row_start)
+          new_cell->pen.wraparound = 1;
       }
     }
 
@@ -236,9 +245,9 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   if(!cell)
     return 0;
 
-  /* Save the old newline bit of the cell, we don't want to overwrite it after
+  /* Save the old wraparound bit of the cell, we don't want to overwrite it after
    * e.g. a BS or CR. The bit will be cleared when allocating new cells/lines in the terminal. */
-  int save_newline = cell->pen.newline;
+  int save_wraparound = cell->pen.wraparound;
 
   int i;
   for(i = 0; i < VTERM_MAX_CHARS_PER_CELL && info->chars[i]; i++) {
@@ -261,8 +270,8 @@ static int putglyph(VTermGlyphInfo *info, VTermPos pos, void *user)
   cell->pen.protected_cell = info->protected_cell;
   cell->pen.dwl            = info->dwl;
   cell->pen.dhl            = info->dhl;
-  /* Restore old newline bit */
-  cell->pen.newline        = save_newline;
+  /* Restore old wraparound bit */
+  cell->pen.wraparound     = save_wraparound;
 
   damagerect(screen, rect);
 
@@ -341,11 +350,9 @@ static int erase_internal(VTermRect rect, int selective, void *user)
         continue;
 
       cell->chars[0] = 0;
-      int save_newline = cell->pen.newline;
       cell->pen = screen->pen;
       cell->pen.dwl = info->doublewidth;
       cell->pen.dhl = info->doubleheight;
-      cell->pen.newline = save_newline;
     }
   }
 
@@ -643,12 +650,12 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   return 1;
 }
 
-static int marknewline(VTermPos pos, void *user)
+static int markwraparound(VTermPos pos, void *user)
 {
   VTermScreen *screen = user;
   ScreenCell *cell = getcell(screen, pos.row, 0);
 
-  cell->pen.newline = 1;
+  cell->pen.wraparound = 1;
   return 1;
 }
 
@@ -693,7 +700,7 @@ static VTermStateCallbacks state_cbs = {
   .bell        = &bell,
   .resize      = &resize,
   .setlineinfo = &setlineinfo,
-  .marknewline = &marknewline,
+  .markwraparound = &markwraparound,
 };
 
 static VTermScreen *screen_new(VTerm *vt)
@@ -834,7 +841,7 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
   cell->attrs.dwl = intcell->pen.dwl;
   cell->attrs.dhl = intcell->pen.dhl;
 
-  cell->attrs.newline = intcell->pen.newline;
+  cell->attrs.wraparound = intcell->pen.wraparound;
 
   cell->fg = intcell->pen.fg;
   cell->bg = intcell->pen.bg;
