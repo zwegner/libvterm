@@ -44,4 +44,4 @@ PUSH  "\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\xCC\x81\
 RESET
 PUSH "\e[80G\xEF\xBC\x90"
   ?screen_cell 0,79 = {} width=1 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)
-  ?screen_cell 1,0 = {0xff10} width=2 attrs={} fg=rgb(240,240,240) bg=rgb(0,0,0)
+  ?screen_cell 1,0 = {0xff10} width=2 attrs={} wrap fg=rgb(240,240,240) bg=rgb(0,0,0)
