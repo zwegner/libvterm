@@ -260,7 +260,7 @@ void vterm_scroll_rect(VTermRect rect,
     int downward,
     int rightward,
     int (*moverect)(VTermRect src, VTermRect dest, void *user),
-    int (*eraserect)(VTermRect rect, int selective, int full_erase, void *user),
+    int (*eraserect)(VTermRect rect, int selective, void *user),
     void *user)
 {
   VTermRect src;
@@ -269,7 +269,7 @@ void vterm_scroll_rect(VTermRect rect,
   if(abs(downward)  >= rect.end_row - rect.start_row ||
      abs(rightward) >= rect.end_col - rect.start_col) {
     /* Scroll more than area; just erase the lot */
-    (*eraserect)(rect, 0, 1, user);
+    (*eraserect)(rect, 0, user);
     return;
   }
 
@@ -322,7 +322,7 @@ void vterm_scroll_rect(VTermRect rect,
   else if(rightward < 0)
     rect.end_col = rect.start_col - rightward;
 
-  (*eraserect)(rect, 0, 1, user);
+  (*eraserect)(rect, 0, user);
 }
 
 void vterm_copy_cells(VTermRect dest,

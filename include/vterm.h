@@ -210,7 +210,7 @@ typedef struct {
   int (*movecursor)(VTermPos pos, VTermPos oldpos, int visible, void *user);
   int (*scrollrect)(VTermRect rect, int downward, int rightward, void *user);
   int (*moverect)(VTermRect dest, VTermRect src, void *user);
-  int (*erase)(VTermRect rect, int selective, int full_erase, void *user);
+  int (*erase)(VTermRect rect, int selective, void *user);
   int (*initpen)(void *user);
   int (*setpenattr)(VTermAttr attr, VTermValue *val, void *user);
   int (*settermprop)(VTermProp prop, VTermValue *val, void *user);
@@ -338,7 +338,7 @@ void vterm_scroll_rect(VTermRect rect,
                        int downward,
                        int rightward,
                        int (*moverect)(VTermRect src, VTermRect dest, void *user),
-                       int (*eraserect)(VTermRect rect, int selective, int full_erase, void *user),
+                       int (*eraserect)(VTermRect rect, int selective, void *user),
                        void *user);
 
 void vterm_copy_cells(VTermRect dest,

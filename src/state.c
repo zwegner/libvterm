@@ -41,11 +41,10 @@ static void updatecursor(VTermState *state, VTermPos *oldpos, int cancel_phantom
       return;
 }
 
-/* See erase_internal() in screen.c for the meaning of <selective>/<full_erase>. */
-static void erase(VTermState *state, VTermRect rect, int selective, int full_erase)
+static void erase(VTermState *state, VTermRect rect, int selective)
 {
   if(state->callbacks && state->callbacks->erase)
-    if((*state->callbacks->erase)(rect, selective, full_erase, state->cbdata))
+    if((*state->callbacks->erase)(rect, selective, state->cbdata))
       return;
 }
 
@@ -1026,14 +1025,14 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
       rect.start_row = state->pos.row; rect.end_row = state->pos.row + 1;
       rect.start_col = state->pos.col; rect.end_col = state->cols;
       if(rect.end_col > rect.start_col)
-        erase(state, rect, selective, 0);
+        erase(state, rect, selective);
 
       rect.start_row = state->pos.row + 1; rect.end_row = state->rows;
       rect.start_col = 0;
       for(int row = rect.start_row; row < rect.end_row; row++)
         set_lineinfo(state, row, FORCE, DWL_OFF, DHL_OFF);
       if(rect.end_row > rect.start_row)
-        erase(state, rect, selective, 0);
+        erase(state, rect, selective);
       break;
 
     case 1:
@@ -1042,12 +1041,12 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
       for(int row = rect.start_row; row < rect.end_row; row++)
         set_lineinfo(state, row, FORCE, DWL_OFF, DHL_OFF);
       if(rect.end_col > rect.start_col)
-        erase(state, rect, selective, 0);
+        erase(state, rect, selective);
 
       rect.start_row = state->pos.row; rect.end_row = state->pos.row + 1;
                           rect.end_col = state->pos.col + 1;
       if(rect.end_row > rect.start_row)
-        erase(state, rect, selective, 0);
+        erase(state, rect, selective);
       break;
 
     case 2:
@@ -1055,7 +1054,7 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
       rect.start_col = 0; rect.end_col = state->cols;
       for(int row = rect.start_row; row < rect.end_row; row++)
         set_lineinfo(state, row, FORCE, DWL_OFF, DHL_OFF);
-      erase(state, rect, selective, 0);
+      erase(state, rect, selective);
       break;
     }
     break;
@@ -1079,7 +1078,7 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
     }
 
     if(rect.end_col > rect.start_col)
-      erase(state, rect, selective, 0);
+      erase(state, rect, selective);
 
     break;
 
@@ -1164,7 +1163,7 @@ static int on_csi(const char *leader, const long args[], int argcount, const cha
     rect.end_col   = state->pos.col + count;
     UBOUND(rect.end_col, THISROWWIDTH(state));
 
-    erase(state, rect, 0, 0);
+    erase(state, rect, 0);
     break;
 
   case 0x5a: // CBT - ECMA-48 8.3.7
@@ -1738,7 +1737,7 @@ void vterm_state_reset(VTermState *state, int hard)
     state->at_phantom = 0;
 
     VTermRect rect = { 0, state->rows, 0, state->cols };
-    erase(state, rect, 0, 1);
+    erase(state, rect, 0);
   }
 }
 
@@ -1818,7 +1817,7 @@ int vterm_state_set_termprop(VTermState *state, VTermProp prop, VTermValue *val)
         .end_row = state->rows,
         .end_col = state->cols,
       };
-      erase(state, rect, 0, 1);
+      erase(state, rect, 0);
     }
     return 1;
   case VTERM_PROP_MOUSE:
