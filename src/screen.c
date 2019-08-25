@@ -568,18 +568,28 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
         break;
 
     int first_blank_row = pos.row + 1;
+
+    VTermRect rect = {
+      .start_row = 0,
+      .end_row   = old_rows,
+      .start_col = 0,
+      .end_col   = old_cols,
+    };
+    /* First, scroll down if we need to. This is to push any lines into the scrollback
+     * that will be cutoff from the resize. */
     if(first_blank_row > new_rows) {
-      VTermRect rect = {
-        .start_row = 0,
-        .end_row   = old_rows,
-        .start_col = 0,
-        .end_col   = old_cols,
-      };
       scrollrect(rect, first_blank_row - new_rows, 0, user);
-      vterm_screen_flush_damage(screen);
 
       delta->row -= first_blank_row - new_rows;
     }
+
+    /* Then, scroll up. This is because realloc_buffer() keeps lines stuck to the bottom,
+     * and so we need to move the actual last line to the last line of the old buffer */
+    int offset = (old_rows - new_rows);
+    rect.end_row = new_rows;
+    scrollrect(rect, -offset, 0, user);
+
+    vterm_screen_flush_damage(screen);
   }
 
   screen->buffers[0] = realloc_buffer(screen, screen->buffers[0], new_rows, new_cols);
@@ -607,42 +617,50 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   }
 
   if(new_rows > old_rows) {
+    /* Keep track of how many rows at the top are from scrollback */
+    int top_damaged_rows = new_rows - old_rows;
+
     if(!is_altscreen && screen->callbacks && screen->callbacks->sb_popline) {
-      int rows = new_rows - old_rows;
-      while(rows) {
+      int dest_row = new_rows - old_rows - 1;
+
+      /* Copy rows from scrollback into the screen going upwards */
+      while(dest_row >= 0) {
         if(!(screen->callbacks->sb_popline(screen->cols, screen->sb_buffer, screen->cbdata)))
           break;
 
-        VTermRect rect = {
-          .start_row = 0,
-          .end_row   = screen->rows,
-          .start_col = 0,
-          .end_col   = screen->cols,
-        };
-        scrollrect(rect, -1, 0, user);
-
-        VTermPos pos = { 0, 0 };
+        VTermPos pos = { dest_row, 0 };
         for(pos.col = 0; pos.col < screen->cols; pos.col += screen->sb_buffer[pos.col].width)
           vterm_screen_set_cell(screen, pos, screen->sb_buffer + pos.col);
 
-        rect.end_row = 1;
-        damagerect(screen, rect);
-
-        vterm_screen_flush_damage(screen);
-
-        rows--;
+        dest_row--;
         delta->row++;
+      }
+
+      /* Scroll down if we couldn't pop enough lines to fill the screen */
+      if(dest_row >= 0) {
+        int offset = dest_row + 1;
+        VTermRect rect = {
+          .start_row = offset,
+          .end_row   = new_rows,
+          .start_col = 0,
+          .end_col   = new_cols,
+        };
+        scrollrect(rect, offset, 0, user);
+        top_damaged_rows -= offset;
       }
     }
 
+    /* Damage all the rows at the top of the new screen */
     VTermRect rect = {
-      .start_row = old_rows,
-      .end_row   = new_rows,
+      .start_row = 0,
+      .end_row   = top_damaged_rows,
       .start_col = 0,
       .end_col   = new_cols,
     };
     damagerect(screen, rect);
   }
+
+  vterm_screen_flush_damage(screen);
 
   if(screen->callbacks && screen->callbacks->resize)
     return (*screen->callbacks->resize)(new_rows, new_cols, screen->cbdata);
