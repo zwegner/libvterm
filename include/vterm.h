@@ -267,6 +267,13 @@ typedef struct {
   VTermColor fg, bg;
 } VTermScreenCell;
 
+/* External representation of a scrollback line */
+typedef struct
+{
+  size_t len;
+  VTermScreenCell cells[];
+} VTermScreenLine;
+
 typedef struct {
   int (*damage)(VTermRect rect, void *user);
   int (*moverect)(VTermRect dest, VTermRect src, void *user);
@@ -274,8 +281,8 @@ typedef struct {
   int (*settermprop)(VTermProp prop, VTermValue *val, void *user);
   int (*bell)(void *user);
   int (*resize)(int rows, int cols, void *user);
-  int (*sb_pushline)(int cols, const VTermScreenCell *cells, void *user);
-  int (*sb_popline)(int cols, VTermScreenCell *cells, void *user);
+  int (*sb_pushline)(VTermScreenLine *line, void *user);
+  VTermScreenLine *(*sb_popline)(void *user);
 } VTermScreenCallbacks;
 
 VTermScreen *vterm_obtain_screen(VTerm *vt);

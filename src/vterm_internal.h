@@ -248,6 +248,9 @@ void vterm_state_push_output_sprintf_CSI(VTermState *vts, const char *format, ..
 
 void vterm_screen_free(VTermScreen *screen);
 
+VTermScreenLine *screen_line_alloc(VTermScreen *screen, size_t len);
+void screen_line_free(VTermScreen *screen, VTermScreenLine *line);
+
 VTermEncoding *vterm_lookup_encoding(VTermEncodingType type, char designation);
 
 int vterm_unicode_width(uint32_t codepoint);

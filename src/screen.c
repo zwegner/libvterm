@@ -63,9 +63,6 @@ struct VTermScreen
   /* buffer will == buffers[0] or buffers[1], depending on altscreen */
   ScreenCell *buffer;
 
-  /* buffer for a single screen row used in scrollback storage callbacks */
-  VTermScreenCell *sb_buffer;
-
   ScreenPen pen;
 };
 
@@ -86,6 +83,19 @@ static int get_last_filled_col(const VTermScreen *screen, const ScreenCell *buff
       last_filled_col = c;
   }
   return last_filled_col;
+}
+
+VTermScreenLine *screen_line_alloc(VTermScreen *screen, size_t len)
+{
+  VTermScreenLine *line = vterm_allocator_malloc(screen->vt,
+      sizeof(size_t) + sizeof(VTermScreenCell) * len);
+  line->len = len;
+  return line;
+}
+
+void screen_line_free(VTermScreen *screen, VTermScreenLine *line)
+{
+  vterm_allocator_free(screen->vt, line);
 }
 
 static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int new_rows, int new_cols)
@@ -288,10 +298,15 @@ static int moverect_internal(VTermRect dest, VTermRect src, void *user)
      screen->buffer == screen->buffers[0]) {        // not altscreen
     VTermPos pos;
     for(pos.row = 0; pos.row < src.start_row; pos.row++) {
-      for(pos.col = 0; pos.col < screen->cols; pos.col++)
-        vterm_screen_get_cell(screen, pos, screen->sb_buffer + pos.col);
+      /* Allocate a local buffer to pass to the library consumer. They are responsible
+       * for the memory after sb_pushline, and must either free it themselves or
+       * pass it back to us through a later sb_popline. */
+      VTermScreenLine *sb_line = screen_line_alloc(screen, screen->cols);
 
-      (screen->callbacks->sb_pushline)(screen->cols, screen->sb_buffer, screen->cbdata);
+      for(pos.col = 0; pos.col < screen->cols; pos.col++)
+        vterm_screen_get_cell(screen, pos, &sb_line->cells[pos.col]);
+
+      (screen->callbacks->sb_pushline)(sb_line, screen->cbdata);
     }
   }
 
@@ -601,11 +616,6 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   screen->rows = new_rows;
   screen->cols = new_cols;
 
-  if(screen->sb_buffer)
-    vterm_allocator_free(screen->vt, screen->sb_buffer);
-
-  screen->sb_buffer = vterm_allocator_malloc(screen->vt, sizeof(VTermScreenCell) * new_cols);
-
   if(new_cols > old_cols) {
     VTermRect rect = {
       .start_row = 0,
@@ -625,12 +635,17 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
 
       /* Copy rows from scrollback into the screen going upwards */
       while(dest_row >= 0) {
-        if(!(screen->callbacks->sb_popline(screen->cols, screen->sb_buffer, screen->cbdata)))
+        VTermScreenLine *sb_line = screen->callbacks->sb_popline(screen->cbdata);
+        if(!sb_line)
           break;
 
         VTermPos pos = { dest_row, 0 };
-        for(pos.col = 0; pos.col < screen->cols; pos.col += screen->sb_buffer[pos.col].width)
-          vterm_screen_set_cell(screen, pos, screen->sb_buffer + pos.col);
+        /* XXX only copy the first part of the line */
+        for(pos.col = 0; pos.col < screen->cols && pos.col < sb_line->len;
+            pos.col += sb_line->cells[pos.col].width)
+          vterm_screen_set_cell(screen, pos, &sb_line->cells[pos.col]);
+
+        screen_line_free(screen, sb_line);
 
         dest_row--;
         delta->row++;
@@ -749,8 +764,6 @@ static VTermScreen *screen_new(VTerm *vt)
 
   screen->buffer = screen->buffers[0];
 
-  screen->sb_buffer = vterm_allocator_malloc(screen->vt, sizeof(VTermScreenCell) * cols);
-
   vterm_state_set_callbacks(screen->state, &state_cbs, screen);
 
   return screen;
@@ -761,8 +774,6 @@ INTERNAL void vterm_screen_free(VTermScreen *screen)
   vterm_allocator_free(screen->vt, screen->buffers[0]);
   if(screen->buffers[1])
     vterm_allocator_free(screen->vt, screen->buffers[1]);
-
-  vterm_allocator_free(screen->vt, screen->sb_buffer);
 
   vterm_allocator_free(screen->vt, screen);
 }
