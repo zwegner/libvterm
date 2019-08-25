@@ -28,6 +28,7 @@ my @expect;
 
 sub do_onetest
 {
+   my $line_nb = shift;
    $hin->print( "$command\n" );
    undef $command;
 
@@ -39,7 +40,7 @@ sub do_onetest
       chomp $outline;
 
       if( !@expect ) {
-         print "# Test failed\n" unless $fail_printed++;
+         print "# line $line_nb: test failed\n" unless $fail_printed++;
          print "#    expected nothing more\n" .
                "#   Actual:   $outline\n";
          next;
@@ -49,13 +50,13 @@ sub do_onetest
 
       next if $expectation eq $outline;
 
-      print "# Test failed\n" unless $fail_printed++;
+      print "# line $line_nb: test failed\n" unless $fail_printed++;
       print "#   Expected: $expectation\n" .
             "#   Actual:   $outline\n";
    }
 
    if( @expect ) {
-      print "# Test failed\n" unless $fail_printed++;
+      print "# line $line_nb: test failed\n" unless $fail_printed++;
       print "#   Expected: $_\n" .
             "#    didn't happen\n" for @expect;
    }
@@ -65,11 +66,12 @@ sub do_onetest
 
 sub do_line
 {
+   my $line_nb = shift;
    my ( $line ) = @_;
 
    if( $line =~ m/^!(.*)/ ) {
-      do_onetest if defined $command;
-      print "> $1\n";
+      do_onetest $line_nb if defined $command;
+      #print "> $1\n";
    }
 
    # Commands have capitals
@@ -81,7 +83,7 @@ sub do_line
          $line = "$1 " . unpack "H*", $string;
       }
 
-      do_onetest if defined $command;
+      do_onetest $line_nb if defined $command;
 
       $command = $line;
       undef @expect;
@@ -122,7 +124,7 @@ sub do_line
       my $row1 = $row + 1;
       my $want = eval($line);
 
-      do_onetest if defined $command;
+      do_onetest $line_nb if defined $command;
 
       # TODO: may not be 80
       $hin->print( "\?screen_chars $row,0,$row1,80\n" );
@@ -131,15 +133,15 @@ sub do_line
 
       $response = pack "C*", map hex, split m/,/, $response;
       if( $response ne $want ) {
-         print "# Assert ?screen_row $row failed:\n" .
-               "# Expected: $want\n" .
-               "# Actual:   $response\n";
+         print "# line $line_nb: assertion failed: '?screen_row $row'\n" .
+               "#     Expected: $want\n" .
+               "#     Actual:   $response\n";
          $exitcode = 1;
       }
    }
    # Assertions start with '?'
    elsif( $line =~ s/^\?([a-z]+.*?=)\s+// ) {
-      do_onetest if defined $command;
+      do_onetest $line_nb if defined $command;
 
       my ( $assertion ) = $1 =~ m/^(.*)\s+=/;
 
@@ -148,9 +150,9 @@ sub do_line
       chomp $response;
 
       if( $response ne $line ) {
-         print "# Assert $assertion failed:\n" .
-               "# Expected: $line\n" .
-               "# Actual:   $response\n";
+         print "# line $line_nb: assertion failed: $assertion\n" .
+               "#     Expected: $line\n" .
+               "#     Actual:   $response\n";
          $exitcode = 1;
       }
    }
@@ -159,12 +161,12 @@ sub do_line
       my ( $low, $high ) = ( $1, $2 );
       foreach my $val ( $low .. $high ) {
          ( my $inner = $line ) =~ s/\\#/$val/g;
-         do_line( $inner );
+         do_line( $line_nb, $inner );
       }
    }
    elsif( $line =~ s/\$REP\s+(\d+):\s*// ) {
       my $count = $1;
-      do_line( $line ) for 1 .. $count;
+      do_line( $line_nb, $line ) for 1 .. $count;
    }
    else {
       die "Unrecognised TEST line $line\n";
@@ -173,15 +175,17 @@ sub do_line
 
 open my $test, "<", $ARGV[0] or die "Cannot open test script $ARGV[0] - $!";
 
+my $line_nb = 0;
 while( my $line = <$test> ) {
+   $line_nb++;
    $line =~ s/^\s+//;
    next if $line =~ m/^(?:#|$)/;
 
    chomp $line;
-   do_line( $line );
+   do_line( $line_nb, $line );
 }
 
-do_onetest if defined $command;
+do_onetest $line_nb if defined $command;
 
 close $hin;
 close $hout;
