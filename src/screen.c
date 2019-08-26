@@ -102,6 +102,8 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
 
+  if(buffer == screen->buffer)
+    DEBUG_LOG("realloc_buffer:\n");
   /* Start copying from the bottom row of each buffer, one line at a time. */
   int src_row_end = -1;
   if(buffer)
@@ -132,6 +134,10 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
       LBOUND(total_rows, 1);
       dest_row_start = dest_row_end - total_rows + 1;
       LBOUND(dest_row_start, 0);
+
+      if(buffer == screen->buffer)
+        DEBUG_LOG("copy row: dest=(%d->%d), src=(%d->%d), last=%d tc=%d tr=%d\n",
+            dest_row_start, dest_row_end, src_row_start, src_row_end, last_filled_col, total_cols, total_rows);
     }
 
     /* Copy the line from source to destination. */
@@ -604,6 +610,8 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
     rect.end_row = new_rows;
     scrollrect(rect, -offset, 0, user);
 
+    DEBUG_LOG("resize shrink: r=(%d->%d) cur=(%d,%d) fb=%d dr=%d\n",
+        old_rows, new_rows, cursor.row, cursor.col, first_blank_row, delta->row);
     vterm_screen_flush_damage(screen);
   }
 
@@ -676,6 +684,9 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   }
 
   vterm_screen_flush_damage(screen);
+
+  DEBUG_LOG("resized: r=(%d->%d) c=(%d->%d) d=(%d,%d)\n",
+      old_rows, new_rows, old_cols, new_cols, delta->row, delta->col);
 
   if(screen->callbacks && screen->callbacks->resize)
     return (*screen->callbacks->resize)(new_rows, new_cols, screen->cbdata);

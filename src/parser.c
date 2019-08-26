@@ -124,6 +124,17 @@ static void done_string(VTerm *vt, const char *str, size_t len)
 
 size_t vterm_input_write(VTerm *vt, const char *bytes, size_t len)
 {
+  if (TRACE_IO) {
+    DEBUG_LOG("vterm_input_write():");
+    for (size_t i = 0; i < len; i++) {
+      if (bytes[i]>=32 && bytes[i] < 127)
+        DEBUG_LOG(".%c", bytes[i]);
+      else
+        DEBUG_LOG(" %02x", bytes[i]);
+    }
+    DEBUG_LOG("\n");
+  }
+
   size_t pos = 0;
   const char *string_start;
 

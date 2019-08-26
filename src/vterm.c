@@ -208,6 +208,17 @@ size_t vterm_output_get_buffer_remaining(const VTerm *vt)
 
 size_t vterm_output_read(VTerm *vt, char *buffer, size_t len)
 {
+  if (TRACE_IO) {
+    DEBUG_LOG("vterm_output_read():");
+    for (size_t i = 0; i < len; i++) {
+      if (buffer[i]>=32 && buffer[i] < 127)
+        DEBUG_LOG(".%c", buffer[i]);
+      else
+        DEBUG_LOG(" %02x", buffer[i]);
+    }
+    DEBUG_LOG("\n");
+  }
+
   if(len > vt->outbuffer_cur)
     len = vt->outbuffer_cur;
 

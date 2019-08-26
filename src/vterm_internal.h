@@ -25,6 +25,8 @@
     } \
   } while (0)
 
+#define TRACE_IO (0)
+
 #define ESC_S "\x1b"
 
 #define INTERMED_MAX 16
