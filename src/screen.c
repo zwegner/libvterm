@@ -98,6 +98,19 @@ void screen_line_free(VTermScreen *screen, VTermScreenLine *line)
   vterm_allocator_free(screen->vt, line);
 }
 
+static ScreenCell *alloc_buffer(VTermScreen *screen, int new_rows, int new_cols)
+{
+  ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
+  for(int row = 0; row < new_rows; row++) {
+    for(int col = 0; col < new_cols; col++) {
+      ScreenCell *new_cell = &new_buffer[row*new_cols + col];
+      new_cell->chars[0] = 0;
+      new_cell->pen = screen->pen;
+    }
+  }
+  return new_buffer;
+}
+
 static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int new_rows, int new_cols)
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
@@ -105,14 +118,12 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
   if(buffer == screen->buffer)
     DEBUG_LOG("realloc_buffer:\n");
   /* Start copying from the bottom row of each buffer, one line at a time. */
-  int src_row_end = -1;
-  if(buffer)
-    src_row_end = screen->rows - 1;
+  int src_row_end = screen->rows - 1;
   for(int dest_row_end = new_rows - 1; dest_row_end >= 0; ) {
     /* Determine how many rows in the source and destination buffers this line occupies */
     int src_row_start = src_row_end;
     int dest_row_start = dest_row_end;
-    if(buffer && src_row_end >= 0) {
+    if(src_row_end >= 0) {
       /* Go back through rows in the source buffer until we find one that's not a wraparound */
       for(; src_row_start >= 0; src_row_start--)
         if(!buffer[src_row_start * screen->cols + 0].pen.wraparound)
@@ -147,7 +158,7 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
         ScreenCell *new_cell = &new_buffer[dest_row*new_cols + dest_col];
 
         /* Copy old cell over */
-        if(buffer && src_row >= 0 && src_row <= src_row_end && src_col < screen->cols) {
+        if(src_row >= 0 && src_row <= src_row_end && src_col < screen->cols) {
           *new_cell = buffer[src_row * screen->cols + src_col];
 
           /* Make sure to clear the wraparound bit from the source buffer, the bit only
@@ -178,8 +189,7 @@ static ScreenCell *realloc_buffer(VTermScreen *screen, ScreenCell *buffer, int n
     src_row_end = src_row_start - 1;
   }
 
-  if(buffer)
-    vterm_allocator_free(screen->vt, buffer);
+  vterm_allocator_free(screen->vt, buffer);
 
   return new_buffer;
 }
@@ -771,7 +781,7 @@ static VTermScreen *screen_new(VTerm *vt)
   screen->callbacks = NULL;
   screen->cbdata    = NULL;
 
-  screen->buffers[0] = realloc_buffer(screen, NULL, rows, cols);
+  screen->buffers[0] = alloc_buffer(screen, rows, cols);
 
   screen->buffer = screen->buffers[0];
 
@@ -951,7 +961,7 @@ void vterm_screen_enable_altscreen(VTermScreen *screen, int altscreen)
     int rows, cols;
     vterm_get_size(screen->vt, &rows, &cols);
 
-    screen->buffers[1] = realloc_buffer(screen, NULL, rows, cols);
+    screen->buffers[1] = alloc_buffer(screen, rows, cols);
   }
 }
 
