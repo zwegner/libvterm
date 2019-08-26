@@ -392,6 +392,7 @@ static int screen_sb_pushline(VTermScreenLine *line, void *user)
     return 1;
   }
 
+  ASSERT(sb_line_ct < MAX_SCROLLBACK_LINES);
   sb_lines[sb_line_ct++] = line;
 
   int eol = line->len;
@@ -424,6 +425,7 @@ static VTermScreenLine *screen_sb_popline(void *user)
     }
   }
   else {
+    ASSERT(sb_line_ct > 0);
     line = sb_lines[--sb_line_ct];
   }
 

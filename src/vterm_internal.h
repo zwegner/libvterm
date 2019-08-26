@@ -17,6 +17,14 @@
 # define DEBUG_LOG(...)
 #endif
 
+#define ASSERT(p) \
+  do {            \
+    if (!(p)) {   \
+      fprintf(stderr, "%s:%d: assertion failed: %s\n", __FILE__, __LINE__, #p); \
+      exit(EXIT_FAILURE); \
+    } \
+  } while (0)
+
 #define ESC_S "\x1b"
 
 #define INTERMED_MAX 16
