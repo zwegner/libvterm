@@ -38,6 +38,7 @@ typedef struct
 } ScreenCell;
 
 static int vterm_screen_set_cell(VTermScreen *screen, VTermPos pos, const VTermScreenCell *cell);
+static int vterm_buffer_get_cell(const VTermScreen *screen, ScreenCell *buffer, VTermPos pos, VTermScreenCell *cell);
 
 struct VTermScreen
 {
@@ -66,13 +67,18 @@ struct VTermScreen
   ScreenPen pen;
 };
 
-static inline ScreenCell *getcell(const VTermScreen *screen, int row, int col)
+static inline ScreenCell *get_buffer_cell(const VTermScreen *screen, ScreenCell *buffer, int row, int col)
 {
   if(row < 0 || row >= screen->rows)
     return NULL;
   if(col < 0 || col >= screen->cols)
     return NULL;
-  return screen->buffer + (screen->cols * row) + col;
+  return buffer + (screen->cols * row) + col;
+}
+
+static inline ScreenCell *getcell(const VTermScreen *screen, int row, int col)
+{
+  return get_buffer_cell(screen, screen->buffer, row, col);
 }
 
 static int get_last_filled_col(const VTermScreen *screen, const ScreenCell *buffer, int row, int col)
@@ -868,9 +874,9 @@ size_t vterm_screen_get_text(const VTermScreen *screen, char *str, size_t len, c
 }
 
 /* Copy internal to external representation of a screen cell */
-int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCell *cell)
+static int vterm_buffer_get_cell(const VTermScreen *screen, ScreenCell *buffer, VTermPos pos, VTermScreenCell *cell)
 {
-  ScreenCell *intcell = getcell(screen, pos.row, pos.col);
+  ScreenCell *intcell = get_buffer_cell(screen, buffer, pos.row, pos.col);
   if(!intcell)
     return 0;
 
@@ -897,12 +903,18 @@ int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCe
   cell->bg = intcell->pen.bg;
 
   if(pos.col < (screen->cols - 1) &&
-     getcell(screen, pos.row, pos.col + 1)->chars[0] == (uint32_t)-1)
+     get_buffer_cell(screen, buffer, pos.row, pos.col + 1)->chars[0] == (uint32_t)-1)
     cell->width = 2;
   else
     cell->width = 1;
 
   return 1;
+}
+
+/* Convenience function for vterm_buffer_get_cell using screen->buffer as buffer */
+int vterm_screen_get_cell(const VTermScreen *screen, VTermPos pos, VTermScreenCell *cell)
+{
+  return vterm_buffer_get_cell(screen, screen->buffer, pos, cell);
 }
 
 /* Copy external to internal representation of a screen cell */
