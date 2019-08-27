@@ -82,6 +82,12 @@ sub do_line
          my $string = eval($2);
          $line = "$1 " . unpack "H*", $string;
       }
+      elsif( $line =~ m/^PUSHN (\d+) (.*)$/ ) {
+         my $n = $1;
+         # we're evil
+         my $string = eval($2);
+         $line = "PUSH " . ((unpack "H*", $string).' ') x $n;
+      }
 
       do_onetest $line_nb if defined $command;
 

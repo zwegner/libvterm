@@ -435,7 +435,7 @@ VTermScreenCallbacks screen_cbs = {
 
 int main(int argc, char **argv)
 {
-  char line[1024] = {0};
+  char line[1<<16] = {0};
   int flag;
 
   int err;
