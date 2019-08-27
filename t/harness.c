@@ -385,13 +385,6 @@ static int want_screen_scrollback = 0;
 
 static int screen_sb_pushline(VTermScreenLine *line, void *user)
 {
-  // If we don't care about scrollback, just free the line immediately
-  if(!want_screen_scrollback) {
-    VTermScreen *screen = (VTermScreen *)user;
-    screen_line_free(screen, line);
-    return 1;
-  }
-
   ASSERT(sb_line_ct < MAX_SCROLLBACK_LINES);
   sb_lines[sb_line_ct++] = line;
 
@@ -399,10 +392,13 @@ static int screen_sb_pushline(VTermScreenLine *line, void *user)
   while(eol && !line->cells[eol-1].chars[0])
     eol--;
 
-  printf("sb_pushline %lu =", line->len);
-  for(int c = 0; c < eol; c++)
-    printf(" %02X", line->cells[c].chars[0]);
-  printf("\n");
+  // We always return the scrollback line, but we only print on request
+  if(want_screen_scrollback) {
+    printf("sb_pushline %lu =", line->len);
+    for(int c = 0; c < eol; c++)
+      printf(" %02X", line->cells[c].chars[0]);
+    printf("\n");
+  }
 
   return 1;
 }
@@ -412,23 +408,12 @@ static VTermScreenLine *screen_sb_popline(void *user)
   if(!want_screen_scrollback)
     return NULL;
 
-  VTermScreen *screen = (VTermScreen *)user;
-  VTermScreenLine *line;
-
   if(sb_line_ct <= 0) {
-    line = screen_line_alloc(screen, 5);
-
-    // XXX Match old scrollback behavior for now to match tests' expectations
-    for(int col = 0; col < line->len; col++) {
-      line->cells[col].chars[0] = 'A' + col;
-      line->cells[col].width = 1;
-    }
-  }
-  else {
-    ASSERT(sb_line_ct > 0);
-    line = sb_lines[--sb_line_ct];
+    printf("sb_popline NULL\n");
+    return NULL;
   }
 
+  VTermScreenLine *line = sb_lines[--sb_line_ct];
   printf("sb_popline %lu\n", line->len);
   return line;
 }
@@ -520,7 +505,7 @@ int main(int argc, char **argv)
       if(!screen)
         screen = vterm_obtain_screen(vt);
       vterm_screen_enable_altscreen(screen, 1);
-      vterm_screen_set_callbacks(screen, &screen_cbs, screen);
+      vterm_screen_set_callbacks(screen, &screen_cbs, NULL);
 
       int i = 10;
       int sense = 1;
