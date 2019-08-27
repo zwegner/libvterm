@@ -48,7 +48,7 @@ sub do_onetest
 
       my $expectation = shift @expect;
 
-      next if $expectation eq $outline;
+      next if $outline =~ $expectation;
 
       print "# line $line_nb: test failed\n" unless $fail_printed++;
       print "#   Expected: $expectation\n" .
@@ -90,6 +90,7 @@ sub do_line
    }
    # Expectations have lowercase
    elsif( $line =~ m/^([a-z]+)/ ) {
+      my $is_regex = 0;
       # Convenience formatting
       if( $line =~ m/^(text|encout) (.*)$/ ) {
          $line = "$1 " . join ",", map sprintf("%x", $_), eval($2);
@@ -109,11 +110,19 @@ sub do_line
       elsif( $line =~ m/^putglyph (\S+) (.*)$/ ) {
          $line = "putglyph " . join( ",", map sprintf("%x", $_), eval($1) ) . " $2";
       }
+      elsif( $line =~ m/^regex (.*)$/ ) {
+         $is_regex = 1;
+         $line = qr/^$1$/;
+      }
       elsif( $line =~ m/^(?:movecursor|scrollrect|moverect|erase|damage|sb_pushline|sb_popline|settermprop|setmousefunc) / ) {
          # no conversion
       }
       else {
          warn "Unrecognised test expectation '$line'\n";
+      }
+
+      if( !$is_regex ) {
+         $line = qr/^\Q$line\E$/;
       }
 
       push @expect, $line;
