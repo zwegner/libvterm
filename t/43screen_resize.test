@@ -83,3 +83,30 @@ RESIZE 30,80
   ?screen_chars 0,0,1,80 = 0x4c,0x69,0x6e,0x65,0x20,0x31
   ?screen_chars 24,0,25,80 = 0x42,0x6f,0x74,0x74,0x6f,0x6d
   ?cursor = 14,0
+
+!Reflow lines bigger than the entire screen
+RESET
+WANTSCREEN -b
+RESIZE 10,80
+WANTSCREEN b
+PUSHN 1000 "0"
+  # As more characters are pushed, a row gets pushed into scrollback, popped back
+  # and combined with more characters, etc.
+  regex sb_pushline 80 =( 30){80}
+  sb_popline 80
+  regex sb_pushline 160 =( 30){160}
+  sb_popline 160
+  regex sb_pushline 240 =( 30){240}
+  # First row should be marked as wraparound from the scrollback
+  ?screen_cell 0,0 = {0x30} width=1 attrs={} wrap fg=rgb(240,240,240) bg=rgb(0,0,0)
+  # 1000 % 80 == 40
+  ?cursor = 9,40
+RESIZE 10,79
+  sb_popline 240
+  # 1000 - (10*79 - (-1000 % 79)) == 237
+  regex sb_pushline 237 =( 30){237}
+  ?screen_cell 0,0 = {0x30} width=1 attrs={} wrap fg=rgb(240,240,240) bg=rgb(0,0,0)
+  # 1000 % 79 == 52
+  ?screen_chars 9,51,10,53 = 0x30
+  # XXX fails right now
+  #?cursor = 9,52
