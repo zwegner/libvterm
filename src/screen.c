@@ -249,6 +249,9 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int ne
 
     int dest_row_start = dest_row_end - row_count + 1, src_idx = 0;
 
+    /* Save the original dest_row_start before clipping scrollback, so we know whether
+     * the first line is wraparound */
+    int abs_dest_row_start = dest_row_start;
     /* Check for a partial line at the top of the screen. If we can't display the whole line,
      * push the invisible part into scrollback. */
     if(dest_row_start < 0) {
@@ -280,7 +283,7 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int ne
         }
 
         /* Set the wraparound bit if needed for this new size */
-        if (dest_col == 0 && dest_row > dest_row_start)
+        if (dest_col == 0 && dest_row > abs_dest_row_start)
           new_cell->pen.wraparound = 1;
       }
     }
