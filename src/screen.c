@@ -783,12 +783,12 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   return 1;
 }
 
-static int markwraparound(VTermPos pos, void *user)
+static int markwraparound(VTermPos pos, int wraparound, void *user)
 {
   VTermScreen *screen = user;
   ScreenCell *cell = getcell(screen, pos.row, 0);
 
-  cell->pen.wraparound = 1;
+  cell->pen.wraparound = wraparound;
   return 1;
 }
 

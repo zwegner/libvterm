@@ -121,10 +121,10 @@ static void scroll(VTermState *state, VTermRect rect, int downward, int rightwar
         state->callbacks->moverect, state->callbacks->erase, state->cbdata);
 }
 
-static void markwraparound(VTermState *state)
+static void markwraparound(VTermState *state, int wraparound)
 {
   if(state->callbacks && state->callbacks->markwraparound)
-    (*state->callbacks->markwraparound)(state->pos, state->cbdata);
+    (*state->callbacks->markwraparound)(state->pos, wraparound, state->cbdata);
 }
 
 static void linefeed(VTermState *state, int is_wraparound)
@@ -142,8 +142,7 @@ static void linefeed(VTermState *state, int is_wraparound)
   else if(state->pos.row < state->rows-1)
     state->pos.row++;
 
-  if(is_wraparound)
-    markwraparound(state);
+  markwraparound(state, is_wraparound);
 }
 
 static void grow_combine_buffer(VTermState *state)
