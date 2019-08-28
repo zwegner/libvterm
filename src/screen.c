@@ -104,6 +104,66 @@ void screen_line_free(VTermScreen *screen, VTermScreenLine *line)
   vterm_allocator_free(screen->vt, line);
 }
 
+/* copy_rows_to_screen_line() allocates a VTermScreenLine for a line on the screen,
+ * either for pushing to scrollback or to use during reflow, and copies rows of cells
+ * from the given buffer into it. If this is the top line on the screen and is wrapped
+ * around from the scrollback, we want to try and pop a scrollback line and allocate a
+ * bigger line to hold the merger of both lines. This function takes the row numbers
+ * to copy, a wraparound flag, and a pointer to store the number of columns in
+ * the popped scrollback line (or 0 if there isn't one). */
+VTermScreenLine *copy_rows_to_screen_line(VTermScreen *screen, const ScreenCell *buffer,
+    int row_start, int row_end, int merge_with_sb, int *sb_col_offset)
+{
+  VTermScreenLine *line = NULL;
+  int offset = 0;
+
+  /* See how many characters are in the last row so we know how many rows in the new
+   * geometry to use for this line. Add one since last_filled_col is one less than the
+   * number of columns used. */
+  int last_filled_col = get_last_filled_col(screen, buffer, row_end, 0) + 1;
+
+  /* XXX look for wide characters in the last column of the old screen, different wrap
+   * points can make this calculation wrong in edge cases */
+  int total_cols = (row_end - row_start) * screen->cols + last_filled_col;
+
+  /* Try to merge with a scrollback line if needed */
+  if(merge_with_sb) {
+    VTermScreenLine *sb_line = screen->callbacks->sb_popline(screen->cbdata);
+    if(sb_line) {
+      offset = sb_line->len;
+      line = screen_line_alloc(screen, total_cols + offset);
+
+      /* Copy data from the scrollback line into the new combined one */
+      /* XXX use a realloc function so we don't have to do this copying */
+      for(int n = 0; n < sb_line->len; n++)
+        line->cells[n] = sb_line->cells[n];
+
+      screen_line_free(screen, sb_line);
+    }
+  }
+  /* If we didn't get a scrollback line, we still need to allocate a buffer */
+  if(!line)
+    line = screen_line_alloc(screen, total_cols);
+
+  /* And now copy the source cells */
+  int n_cells = offset;
+  for(int row = row_start; row <= row_end; row++) {
+    int max_col = row == row_end ? last_filled_col : screen->cols;
+    for(int col = 0; col < max_col; col++) {
+      ASSERT(n_cells < line->len);
+      /* XXX take width into account */
+      VTermPos pos = { row, col };
+      vterm_buffer_get_cell(screen, buffer, pos, &line->cells[n_cells++]);
+      /* XXX clear wraparound bit */
+    }
+  }
+
+  if(sb_col_offset)
+    *sb_col_offset = offset;
+
+  return line;
+}
+
 static ScreenCell *alloc_buffer(VTermScreen *screen, int new_rows, int new_cols)
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
@@ -178,41 +238,19 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
         if(!buffer[src_row_start * screen->cols + 0].pen.wraparound)
           break;
 
-      /* Remember whether we need to wraparound from scrollback */
+      /* If we hit the top of the buffer, remember that we need to wraparound
+       * from scrollback */
       int first_line_wraparound = 0;
       if(src_row_start == -1) {
         first_line_wraparound = 1;
         src_row_start = 0;
       }
 
-      /* See how many characters are in the last row so we know how many rows in the new
-       * geometry to use for this line */
-      int last_filled_col = get_last_filled_col(screen, buffer, src_row_end, 0);
-      /* Always add one, since last_filled_col is one less than the number of columns used */
-      last_filled_col++;
-      /* XXX look for wide characters in the last column of the old screen, different wrap
-       * points can make this calculation wrong in edge cases */
-      int total_cols = (src_row_end - src_row_start) * screen->cols + last_filled_col;
-
-      int n_cells = 0;
+      /* Copy this set of rows to a screen line, merging it will scrollback if necessary. */
       int sb_col_offset = 0;
-      /* Annoying case: a scrollback line continues onto the visible screen. Pop the line
-       * if we can, and join it with the rows here. Any part of the line that isn't visible
-       * in the new screen will get pushed into scrollback later.*/
-      if(first_line_wraparound && can_use_sb) {
-        VTermScreenLine *sb_line = screen->callbacks->sb_popline(screen->cbdata);
-        if(sb_line) {
-          sb_col_offset = sb_line->len;
-          total_cols += sb_col_offset;
-          line = screen_line_alloc(screen, total_cols);
-
-          /* Copy data from the scrollback line into the new combined one, updating n_cells */
-          for(; n_cells < sb_line->len; n_cells++)
-            line->cells[n_cells] = sb_line->cells[n_cells];
-
-          screen_line_free(screen, sb_line);
-        }
-      }
+      int merge_with_sb = (first_line_wraparound && can_use_sb);
+      line = copy_rows_to_screen_line(screen, buffer, src_row_start, src_row_end,
+          merge_with_sb, &sb_col_offset);
 
       /* Check if the cursor was on this line, and note the line/column it's on. We
        * also need to verify that this line is long enough */
@@ -220,22 +258,6 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
         cursor_line = n_src_lines;
         /* XXX deal with char width */
         cursor_col = (cursor->row - src_row_start) * screen->cols + cursor->col + sb_col_offset;
-      }
-
-      /* If we didn't get a scrollback line, we still need to allocate a buffer */
-      if(!line)
-        line = screen_line_alloc(screen, total_cols);
-
-      /* And now copy the source cells */
-      for(int src_row = src_row_start; src_row <= src_row_end; src_row++) {
-        int max_col = src_row == src_row_end ? last_filled_col : screen->cols;
-        for(int src_col = 0; src_col < max_col; src_col++) {
-          ASSERT(n_cells < line->len);
-          /* XXX take width into account */
-          VTermPos pos = { src_row, src_col };
-          vterm_buffer_get_cell(screen, buffer, pos, &line->cells[n_cells++]);
-          /* XXX clear wraparound bit */
-        }
       }
 
       src_row_end = src_row_start - 1;
@@ -461,35 +483,23 @@ static int moverect_internal(VTermRect dest, VTermRect src, void *user)
      dest.start_row == 0 && dest.start_col == 0 &&  // starts top-left corner
      dest.end_col == screen->cols &&                // full width
      screen->buffer == screen->buffers[0]) {        // not altscreen
-    VTermPos pos;
-    for(pos.row = 0; pos.row < src.start_row; pos.row++) {
-      VTermScreenLine *line = NULL;
-      /* XXX combine this with code in reflow_buffer() */
-      int total_cols = screen->cols, n_cells = 0;
-      if(getcell(screen, pos.row, 0)->pen.wraparound) {
-        VTermScreenLine *sb_line = screen->callbacks->sb_popline(screen->cbdata);
-        if(sb_line) {
-          total_cols += sb_line->len;
-          line = screen_line_alloc(screen, total_cols);
+    for(int row_start = 0; row_start < src.start_row; ) {
+      /* Go forward through screen rows until we find one that's not a wraparound */
+      int row_end = row_start + 1;
+      while(row_end < src.start_row && screen->buffer[row_start * screen->cols].pen.wraparound)
+        row_end++;
+      row_end--;
 
-          /* Copy data from the scrollback line into the new combined one, updating n_cells */
-          for(; n_cells < sb_line->len; n_cells++)
-            line->cells[n_cells] = sb_line->cells[n_cells];
-
-          screen_line_free(screen, sb_line);
-        }
-      }
-      /* If we didn't get a scrollback line, we still need to allocate a buffer */
-      if(!line)
-        line = screen_line_alloc(screen, total_cols);
-
-      for(pos.col = 0; pos.col < screen->cols; pos.col++)
-        vterm_screen_get_cell(screen, pos, &line->cells[n_cells + pos.col]);
+      int merge_with_sb = (row_start == 0 && getcell(screen, 0, 0)->pen.wraparound);
+      VTermScreenLine *line = copy_rows_to_screen_line(screen, screen->buffer,
+          row_start, row_end, merge_with_sb, NULL);
 
       /* Pass the buffer to the library consumer. They are responsible
        * for the memory after sb_pushline, and must either free it themselves or
        * pass it back to us through a later sb_popline. */
       (screen->callbacks->sb_pushline)(line, screen->cbdata);
+
+      row_start = row_end + 1;
     }
   }
 
