@@ -45,11 +45,11 @@ PUSH "Top\e[25HLine 25\e[15H"
   ?cursor = 14,0
 WANTSCREEN b
 RESIZE 20,80
-  sb_pushline 80 = 54 6F 70
-  sb_pushline 80 =
-  sb_pushline 80 =
-  sb_pushline 80 =
-  sb_pushline 80 =
+  sb_pushline 3 = 54 6F 70
+  sb_pushline 0 =
+  sb_pushline 0 =
+  sb_pushline 0 =
+  sb_pushline 0 =
   ?screen_chars 0,0,1,80 = 
   ?screen_chars 19,0,20,80 = 0x4c,0x69,0x6e,0x65,0x20,0x32,0x35
   ?cursor = 9,0
@@ -65,7 +65,7 @@ PUSH "\e[24HLine 24\r\nLine 25\r\n"
   ?screen_chars 23,0,24,10 = 0x4c,0x69,0x6e,0x65,0x20,0x32,0x35
   ?cursor = 24,0
 RESIZE 24,80
-  sb_pushline 80 =
+  sb_pushline 0 =
   ?screen_chars 22,0,23,10 = 0x4c,0x69,0x6e,0x65,0x20,0x32,0x35
   ?cursor = 23,0
 

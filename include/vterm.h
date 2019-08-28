@@ -215,7 +215,7 @@ typedef struct {
   int (*setpenattr)(VTermAttr attr, VTermValue *val, void *user);
   int (*settermprop)(VTermProp prop, VTermValue *val, void *user);
   int (*bell)(void *user);
-  int (*resize)(int rows, int cols, VTermPos *delta, void *user);
+  int (*resize)(VTermPos *cursor, int rows, int cols, void *user);
   int (*setlineinfo)(int row, const VTermLineInfo *newinfo, const VTermLineInfo *oldinfo, void *user);
   int (*markwraparound)(VTermPos pos, int wraparound, void *user);
 } VTermStateCallbacks;

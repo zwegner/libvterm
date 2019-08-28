@@ -126,7 +126,8 @@ int get_line_row_count(VTermScreenLine *line, int width)
   return total_rows;
 }
 
-static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int new_rows, int new_cols)
+static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
+    VTermPos *cursor, int new_rows, int new_cols)
 {
   ScreenCell *new_buffer = vterm_allocator_malloc(screen->vt, sizeof(ScreenCell) * new_rows * new_cols);
 
@@ -148,11 +149,25 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int ne
 
   /* The src_lines buffer only needs to store up to <new_rows> lines, since each line is at least
    * one row. */
-  VTermScreenLine **src_lines = vterm_allocator_malloc(screen->vt, sizeof(VTermScreenLine) * new_rows);
-  int *line_row_counts = vterm_allocator_malloc(screen->vt, sizeof(int) * new_rows);
+  int src_line_size = MAX(new_rows, screen->rows);
+  VTermScreenLine **src_lines = vterm_allocator_malloc(screen->vt, sizeof(VTermScreenLine) * src_line_size);
+  int *line_row_counts = vterm_allocator_malloc(screen->vt, sizeof(int) * src_line_size);
   int n_src_lines = 0, n_used_rows = 0;
   int src_row_end = screen->rows - 1;
-  while(n_used_rows < new_rows) {
+
+  /* Check for blank rows at the bottom if we're shrinking */
+  if(buffer == screen->buffer && new_rows < screen->rows) {
+    VTermPos pos = { 0, 0 };
+    for(pos.row = screen->rows - 1; pos.row >= new_rows; pos.row--)
+      if(!vterm_screen_is_eol(screen, pos) || cursor->row == pos.row)
+        break;
+
+    int offset = pos.row - new_rows + 1;
+    cursor->row -= offset;
+    src_row_end = pos.row;
+  }
+
+  while(n_used_rows < new_rows || src_row_end >= 0) {
     VTermScreenLine *line = NULL;
     /* Are there still rows left in the source buffer? */
     if(src_row_end >= 0) {
@@ -222,7 +237,7 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int ne
       break;
 
     /* Add this line into our array, and account for how many rows it will take up */
-    ASSERT(n_src_lines < new_rows);
+    ASSERT(n_src_lines < src_line_size);
     src_lines[n_src_lines] = line;
 
     int row_count = get_line_row_count(line, new_cols);
@@ -291,10 +306,10 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer, int ne
     dest_row_end = dest_row_start - 1;
   }
 
-  /* Push all the necessary lines into scrollback */
-  while(src_line_idx < n_src_lines) {
-    VTermScreenLine *line = src_lines[src_line_idx];
-    src_line_idx++;
+  /* Push all the necessary lines into scrollback. We go from the end backwards,
+   * since source lines are stored from the bottom up */
+  for(int i = n_src_lines - 1; i >= src_line_idx; i--) {
+    VTermScreenLine *line = src_lines[i];
     if(can_use_sb)
       (screen->callbacks->sb_pushline)(line, screen->cbdata);
     else
@@ -713,7 +728,7 @@ static int bell(void *user)
   return 0;
 }
 
-static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
+static int resize(VTermPos *cursor, int new_rows, int new_cols, void *user)
 {
   VTermScreen *screen = user;
 
@@ -722,48 +737,12 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   int old_rows = screen->rows;
   int old_cols = screen->cols;
 
-  if(!is_altscreen && new_rows < old_rows) {
-    // Fewer rows - determine if we're going to scroll at all, and if so, push
-    // those lines to scrollback
-    VTermPos pos = { 0, 0 };
-    VTermPos cursor = screen->state->pos;
-    // Find the first blank row after the cursor.
-    for(pos.row = old_rows - 1; pos.row >= new_rows; pos.row--)
-      if(!vterm_screen_is_eol(screen, pos) || cursor.row == pos.row)
-        break;
-
-    int first_blank_row = pos.row + 1;
-
-    VTermRect rect = {
-      .start_row = 0,
-      .end_row   = old_rows,
-      .start_col = 0,
-      .end_col   = old_cols,
-    };
-    /* First, scroll down if we need to. This is to push any lines into the scrollback
-     * that will be cutoff from the resize. */
-    if(first_blank_row > new_rows) {
-      scrollrect(rect, first_blank_row - new_rows, 0, user);
-
-      delta->row -= first_blank_row - new_rows;
-    }
-
-    /* Then, scroll up. This is because reflow_buffer() keeps lines stuck to the bottom,
-     * and so we need to move the actual last line to the last line of the old buffer */
-    int offset = (old_rows - new_rows);
-    rect.end_row = new_rows;
-    scrollrect(rect, -offset, 0, user);
-
-    DEBUG_LOG("resize shrink: r=(%d->%d) cur=(%d,%d) fb=%d dr=%d\n",
-        old_rows, new_rows, cursor.row, cursor.col, first_blank_row, delta->row);
-    vterm_screen_flush_damage(screen);
-  }
-
-  /* XXX pass in cursor */
-  screen->buffers[0] = reflow_buffer(screen, screen->buffers[0], new_rows, new_cols);
+  screen->buffers[0] = reflow_buffer(screen, screen->buffers[0], cursor,
+      new_rows, new_cols);
 
   if(screen->buffers[1])
-    screen->buffers[1] = reflow_buffer(screen, screen->buffers[1], new_rows, new_cols);
+    screen->buffers[1] = reflow_buffer(screen, screen->buffers[1], NULL,
+        new_rows, new_cols);
 
   screen->buffer = is_altscreen ? screen->buffers[1] : screen->buffers[0];
 
@@ -774,8 +753,8 @@ static int resize(int new_rows, int new_cols, VTermPos *delta, void *user)
   damagescreen(screen);
   vterm_screen_flush_damage(screen);
 
-  DEBUG_LOG("resized: r=(%d->%d) c=(%d->%d) d=(%d,%d)\n",
-      old_rows, new_rows, old_cols, new_cols, delta->row, delta->col);
+  DEBUG_LOG("resized: r=(%d->%d) c=(%d->%d)\n",
+      old_rows, new_rows, old_cols, new_cols);
 
   if(screen->callbacks && screen->callbacks->resize)
     return (*screen->callbacks->resize)(new_rows, new_cols, screen->cbdata);

@@ -37,6 +37,10 @@
 #define LBOUND(v,min) if((v) < (min)) (v) = (min)
 #define UBOUND(v,max) if((v) > (max)) (v) = (max)
 
+/* Insert standard "don't use expressions with side effects" warning here */
+#define MIN(a,b) ((a) <= (b) ? (a) : (b))
+#define MAX(a,b) ((a) >= (b) ? (a) : (b))
+
 typedef struct VTermEncoding VTermEncoding;
 
 typedef struct {
