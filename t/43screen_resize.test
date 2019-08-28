@@ -108,5 +108,4 @@ RESIZE 10,79
   ?screen_cell 0,0 = {0x30} width=1 attrs={} wrap fg=rgb(240,240,240) bg=rgb(0,0,0)
   # 1000 % 79 == 52
   ?screen_chars 9,51,10,53 = 0x30
-  # XXX fails right now
-  #?cursor = 9,52
+  ?cursor = 9,52

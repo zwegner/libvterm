@@ -119,7 +119,7 @@ static ScreenCell *alloc_buffer(VTermScreen *screen, int new_rows, int new_cols)
 
 /* Get number of rows a line takes up (round up after dividing by width, with a minimum of 1) */
 /* XXX deal with char width */
-int get_line_row_count(VTermScreenLine *line, int width)
+int get_line_row_count(VTermScreenLine *line, int cols, int width)
 {
   int total_rows = (line->len + width - 1) / width;
   LBOUND(total_rows, 1);
@@ -155,6 +155,9 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
   int n_src_lines = 0, n_used_rows = 0;
   int src_row_end = screen->rows - 1;
 
+  /* Keep track of which line and column the cursor is currently at */
+  int cursor_line = -1, cursor_col = -1;
+
   /* Check for blank rows at the bottom if we're shrinking */
   if(buffer == screen->buffer && new_rows < screen->rows) {
     VTermPos pos = { 0, 0 };
@@ -162,8 +165,6 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
       if(!vterm_screen_is_eol(screen, pos) || cursor->row == pos.row)
         break;
 
-    int offset = pos.row - new_rows + 1;
-    cursor->row -= offset;
     src_row_end = pos.row;
   }
 
@@ -194,13 +195,15 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
       int total_cols = (src_row_end - src_row_start) * screen->cols + last_filled_col;
 
       int n_cells = 0;
+      int sb_col_offset = 0;
       /* Annoying case: a scrollback line continues onto the visible screen. Pop the line
        * if we can, and join it with the rows here. Any part of the line that isn't visible
        * in the new screen will get pushed into scrollback later.*/
       if(first_line_wraparound && can_use_sb) {
         VTermScreenLine *sb_line = screen->callbacks->sb_popline(screen->cbdata);
         if(sb_line) {
-          total_cols += sb_line->len;
+          sb_col_offset = sb_line->len;
+          total_cols += sb_col_offset;
           line = screen_line_alloc(screen, total_cols);
 
           /* Copy data from the scrollback line into the new combined one, updating n_cells */
@@ -209,6 +212,14 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
 
           screen_line_free(screen, sb_line);
         }
+      }
+
+      /* Check if the cursor was on this line, and note the line/column it's on. We
+       * also need to verify that this line is long enough */
+      if(cursor && cursor->row >= src_row_start && cursor->row <= src_row_end) {
+        cursor_line = n_src_lines;
+        /* XXX deal with char width */
+        cursor_col = (cursor->row - src_row_start) * screen->cols + cursor->col + sb_col_offset;
       }
 
       /* If we didn't get a scrollback line, we still need to allocate a buffer */
@@ -240,7 +251,7 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
     ASSERT(n_src_lines < src_line_size);
     src_lines[n_src_lines] = line;
 
-    int row_count = get_line_row_count(line, new_cols);
+    int row_count = get_line_row_count(line, line->len, new_cols);
     line_row_counts[n_src_lines] = row_count;
     n_used_rows += row_count;
 
@@ -253,13 +264,12 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
 
   /* Write the lines to the destination, from the bottom up */
   int src_line_idx = 0;
-  for(int dest_row_end = new_rows - 1 - offset; dest_row_end >= 0; ) {
+  for(int dest_row_end = new_rows - 1 - offset; dest_row_end >= 0; src_line_idx++) {
     VTermScreenLine *src_line = NULL;
     int row_count = 1;
     if(src_line_idx < n_src_lines) {
       src_line = src_lines[src_line_idx];
       row_count = line_row_counts[src_line_idx];
-      src_line_idx++;
     }
 
     int dest_row_start = dest_row_end - row_count + 1, src_idx = 0;
@@ -283,6 +293,14 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
 
         (screen->callbacks->sb_pushline)(sb_line, screen->cbdata);
       }
+    }
+
+    /* Check if the cursor was on this line, and update to the new position */
+    if(cursor && cursor_line == src_line_idx) {
+      int row_offset = get_line_row_count(src_line, cursor_col, new_cols) - 1;
+      /* XXX check for out of bounds */
+      cursor->row = abs_dest_row_start + row_offset;
+      cursor->col = cursor_col - (row_offset * new_cols);
     }
 
     for(int dest_row = dest_row_start; dest_row <= dest_row_end; dest_row++) {
