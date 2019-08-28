@@ -286,6 +286,7 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
 
   /* Write the lines to the destination, from the bottom up */
   int src_line_idx = 0;
+  VTermScreenLine *partial_sb_line = NULL;
   for(int dest_row_end = new_rows - 1 - offset; dest_row_end >= 0; src_line_idx++) {
     VTermScreenLine *src_line = NULL;
     int row_count = 1;
@@ -308,12 +309,10 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
       dest_row_start = 0;
 
       if(can_use_sb) {
-        VTermScreenLine *sb_line = screen_line_alloc(screen, src_idx);
+        partial_sb_line = screen_line_alloc(screen, src_idx);
 
         for(int n = 0; n < src_idx; n++)
-          sb_line->cells[n] = src_line->cells[n];
-
-        (screen->callbacks->sb_pushline)(sb_line, screen->cbdata);
+          partial_sb_line->cells[n] = src_line->cells[n];
       }
     }
 
@@ -355,6 +354,10 @@ static ScreenCell *reflow_buffer(VTermScreen *screen, ScreenCell *buffer,
     else
       screen_line_free(screen, line);
   }
+  /* If there's a line that wraps around to the top of the screen, push the invisible
+   * part of the line to scrollback after the other scrollback lines */
+  if(partial_sb_line)
+    (screen->callbacks->sb_pushline)(partial_sb_line, screen->cbdata);
 
   /* XXX double check that every src_line has been freed */
   vterm_allocator_free(screen->vt, src_lines);
